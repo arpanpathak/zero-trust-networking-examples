@@ -1,0 +1,12 @@
+# ==============================================================================
+# NAMESPACE: cilium-demo
+# ==============================================================================
+# All resources for this demo live in their own namespace.
+# This keeps things isolated from your existing books-api and redis deployments.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cilium-demo
+  labels:
+    # This label is used by Cilium policies to select the entire namespace.
+    purpose: cilium-demo

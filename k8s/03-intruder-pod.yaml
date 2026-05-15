@@ -1,0 +1,32 @@
+# ==============================================================================
+# INTRUDER POD - The "Attacker"
+# ==============================================================================
+# This pod simulates a malicious or unauthorized workload.
+# It has curl installed and will try to access the catalog-api.
+#
+# BEFORE Cilium policies: This pod CAN reach catalog-api (default Kubernetes behavior).
+# AFTER  Cilium policies: This pod is BLOCKED from reaching catalog-api.
+#
+# This is the most satisfying part of the demo — you can watch traffic get
+# denied in real-time via Hubble.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intruder
+  namespace: cilium-demo
+  labels:
+    app: intruder
+    role: malicious
+spec:
+  containers:
+  - name: intruder
+    image: alpine/curl:latest
+    # Keep the pod alive so we can exec into it and manually test.
+    command: ["sleep", "infinity"]
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 100m
+        memory: 32Mi

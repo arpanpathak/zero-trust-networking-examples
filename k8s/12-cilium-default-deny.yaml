@@ -1,0 +1,28 @@
+# ==============================================================================
+# CILIUM DEFAULT DENY — "Zero Trust Baseline"
+# ==============================================================================
+# This policy implements the "Zero Trust" principle at the namespace level:
+#   - ALL ingress traffic is denied by default.
+#   - Only traffic explicitly allowed by other policies (10-*, 11-*) gets through.
+#
+# This is the foundation of micro-segmentation. Without this, Kubernetes
+# allows ALL pod-to-pod traffic by default, which is a security nightmare.
+#
+# APPLY THIS LAST after verifying your allow-rules work.
+# If you apply this first, everything will break until you add the allow rules.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: cilium-demo
+spec:
+  # Empty selector = matches ALL pods in the namespace.
+  endpointSelector: {}
+
+  # Empty ingress list = deny all incoming traffic.
+  # Only traffic explicitly allowed by other CiliumNetworkPolicies will pass.
+  ingress:
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

@@ -1,0 +1,72 @@
+# ==============================================================================
+# CATALOG API - Deployment + Service
+# ==============================================================================
+# This is the "protected" service. Cilium policies will restrict who can reach it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  namespace: cilium-demo
+  labels:
+    app: catalog-api
+    role: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog-api
+  template:
+    metadata:
+      labels:
+        app: catalog-api
+        role: backend
+    spec:
+      containers:
+      - name: catalog-api
+        # NOTE: Replace with your own Docker Hub / GHCR image after building.
+        # For now, we use a lightweight Go HTTP server image as placeholder.
+        image: arpanpathak/cilium-catalog-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+---
+# ClusterIP service — internal only, no Load Balancer cost.
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-api
+  namespace: cilium-demo
+  labels:
+    app: catalog-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: catalog-api

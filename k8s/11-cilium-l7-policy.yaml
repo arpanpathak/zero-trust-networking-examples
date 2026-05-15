@@ -1,0 +1,56 @@
+# ==============================================================================
+# CILIUM L7 NETWORK POLICY — "What HTTP methods are allowed?"
+# ==============================================================================
+# This is where Cilium's eBPF power truly shines. Traditional firewalls
+# (iptables, SecurityGroups) can only filter at L3/L4 (IP + Port).
+# Cilium can filter at L7 — meaning it inspects the actual HTTP request
+# and can allow/deny based on:
+#   - HTTP method (GET, POST, PUT, DELETE)
+#   - URL path (/items, /admin)
+#   - HTTP headers
+#
+# This policy says:
+#   ✅ ALLOW: GET  /items  (read the catalog)
+#   ✅ ALLOW: GET  /healthz (health checks)
+#   ❌ DENY:  POST /items  (creating items is blocked at the kernel level)
+#   ❌ DENY:  Everything else (DELETE, PUT, PATCH, etc.)
+#
+# HOW TO TEST:
+#   1. From orders-api:  curl catalog-api:8080/items         → ✅ 200 OK
+#   2. From orders-api:  curl -X POST catalog-api:8080/items  → ❌ 403 Forbidden (by Cilium!)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-l7-policy
+  namespace: cilium-demo
+spec:
+  # Apply this policy to pods with label "app=catalog-api"
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          # The 'rules' block is the L7 filter.
+          # Cilium's eBPF program in the kernel intercepts every packet,
+          # parses the HTTP request, and drops anything that doesn't match.
+          rules:
+            http:
+              # Allow GET on /items
+              - method: GET
+                path: "/items"
+              # Allow GET on /healthz (needed for probes)
+              - method: GET
+                path: "/healthz"
+
+    # Allow kubelet health checks to pass through.
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

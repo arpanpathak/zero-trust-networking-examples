@@ -1,0 +1,43 @@
+# ==============================================================================
+# CILIUM L3/L4 NETWORK POLICY — "Who can talk to the Catalog?"
+# ==============================================================================
+# This policy implements micro-segmentation:
+#
+#   ✅ ALLOW: orders-api (label: app=orders-api) → catalog-api on port 8080
+#   ❌ DENY:  Everything else (intruder pod, random pods, etc.)
+#
+# This is an "ingress" policy applied to the catalog-api pods.
+# Think of it as a firewall rule: "Only let traffic in from orders-api."
+#
+# HOW TO TEST:
+#   1. From orders-api pod:  curl catalog-api:8080/items  → ✅ 200 OK
+#   2. From intruder pod:    curl catalog-api:8080/items  → ❌ Connection refused / timeout
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-l3l4-policy
+  namespace: cilium-demo
+spec:
+  # Apply this policy to pods with label "app=catalog-api"
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  # Define what ingress (incoming) traffic is allowed.
+  ingress:
+    # Rule 1: Allow traffic from the orders-api on port 8080.
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # Rule 2: Allow health checks from kubelet and system components.
+    # 'host' = the node where kubelet runs (source of liveness/readiness probes).
+    # Without this, Kubernetes probes are blocked and pods get killed.
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

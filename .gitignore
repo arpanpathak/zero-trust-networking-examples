@@ -1,0 +1,52 @@
+# =============================================================================
+# Zero Trust Networking Examples — .gitignore
+# =============================================================================
+
+# ---- Binaries & Build Artifacts ----
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+catalog-api/catalog-api
+orders-api/orders-api
+
+# ---- Go ----
+vendor/
+
+# ---- Docker ----
+*.tar.gz
+
+# ---- Kubernetes Secrets & Sensitive Files ----
+kubeconfig.yaml
+kubeconfig*.yaml
+*.kubeconfig
+**/secrets.yaml
+**/secret.yaml
+**/*-secret.yaml
+*.pem
+*.key
+*.crt
+*.csr
+
+# ---- Terraform (if any IaC leaks in) ----
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# ---- Environment & Credentials ----
+.env
+.env.*
+*.env
+terraform.tfvars
+
+# ---- IDE / OS ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
