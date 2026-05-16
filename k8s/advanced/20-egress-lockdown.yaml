@@ -1,0 +1,55 @@
+# ==============================================================================
+# EXERCISE 1: DNS-Aware Egress Policy — "Lock the Exits"
+# ==============================================================================
+# Scenario:
+#   Your catalog-api pod has been compromised. The attacker tries to
+#   exfiltrate data by calling external APIs (e.g., evil.com, webhook.site).
+#   This policy blocks ALL egress EXCEPT:
+#     ✅ DNS queries (to resolve internal services)
+#     ✅ Traffic to catalog-api's own ClusterIP (internal comms)
+#     ❌ ANY external HTTP/HTTPS call → BLOCKED
+#
+# WHY THIS IS COOL:
+#   Traditional K8s NetworkPolicies can't do DNS-aware filtering.
+#   Cilium inspects the DNS response and dynamically programs eBPF rules
+#   for the resolved IPs — no static IP lists needed.
+#
+# HOW TO TEST:
+#   1. Before policy: kubectl exec <catalog-pod> -- curl -s https://httpbin.org/ip  → ✅ works
+#   2. Apply policy:  kubectl apply -f k8s/advanced/20-egress-lockdown.yaml
+#   3. After policy:  kubectl exec <catalog-pod> -- curl -s --connect-timeout 5 https://httpbin.org/ip  → ❌ timeout
+#   4. Internal call still works: kubectl exec <orders-pod> -- curl -s catalog-api:8080/items  → ✅ works
+# ==============================================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-egress-lockdown
+  namespace: cilium-demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  # Egress rules: control what catalog-api can SEND to.
+  egress:
+    # Rule 1: Allow DNS queries (essential — without this, nothing resolves)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Rule 2: Allow internal cluster traffic to any pod in cilium-demo namespace
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cilium-demo
+
+    # Rule 3: Allow health/system traffic
+    - toEntities:
+        - host
+        - kube-apiserver

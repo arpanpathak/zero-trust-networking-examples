@@ -28,6 +28,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/items", catalogHandler.HandleItems)
 	mux.HandleFunc("/healthz", catalogHandler.HandleHealth)
+	mux.HandleFunc("/admin", catalogHandler.HandleAdmin)              // Exercise 7: path-based L7 filtering
+	mux.HandleFunc("/test-egress", catalogHandler.HandleTestEgress)   // Exercise 1 & 2: egress lockdown
 
 	// 4. Start the server.
 	log.Printf("🚀 Catalog API starting on :%s", port)

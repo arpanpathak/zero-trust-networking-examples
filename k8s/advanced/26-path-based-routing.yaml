@@ -1,0 +1,57 @@
+# ==============================================================================
+# EXERCISE 7: Path-Based Routing with L7 — "URL-Level Access Control"
+# ==============================================================================
+# Scenario:
+#   You've added an /admin endpoint to catalog-api. You want:
+#     ✅ orders-api → GET /items     (allowed)
+#     ✅ orders-api → GET /healthz   (allowed)
+#     ❌ orders-api → GET /admin     (BLOCKED — kernel level)
+#     ❌ intruder   → ANY endpoint   (BLOCKED)
+#
+#   Cilium's eBPF program matches the URL path in every HTTP request
+#   and drops non-matching paths before they reach your application.
+#
+# WHY THIS IS COOL:
+#   This is URL-level firewall rules enforced in the Linux kernel.
+#   No nginx, no middleware, no WAF. Just eBPF.
+#
+# HOW TO TEST:
+#   1. First, add the /admin endpoint to catalog-api (see catalog-api code changes below)
+#   2. Apply: kubectl apply -f k8s/advanced/26-path-based-routing.yaml
+#   3. kubectl exec <orders-pod> -- curl -s catalog-api:8080/items     → ✅ 200 OK
+#   4. kubectl exec <orders-pod> -- curl -s catalog-api:8080/admin     → ❌ 403 by Cilium
+#   5. kubectl exec <orders-pod> -- curl -s catalog-api:8080/secret    → ❌ 403 by Cilium
+#   6. hubble observe -n cilium-demo --http-path "/admin" --verdict DROPPED
+# ==============================================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-path-routing
+  namespace: cilium-demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              # Whitelist: ONLY these paths are allowed. Everything else → 403.
+              - method: GET
+                path: "/items"
+              - method: GET
+                path: "/healthz"
+              # Intentionally NOT listing /admin — it's blocked by default
+              # because Cilium denies any path not in this list.
+
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

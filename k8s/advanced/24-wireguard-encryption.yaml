@@ -1,0 +1,53 @@
+# ==============================================================================
+# EXERCISE 5: Transparent Encryption with WireGuard — "Encrypt Everything"
+# ==============================================================================
+# Scenario:
+#   All pod-to-pod traffic in your cluster is plaintext by default.
+#   An attacker who gains access to a node can tcpdump and see all HTTP
+#   payloads (item names, prices, orders). With Cilium + WireGuard,
+#   ALL pod-to-pod traffic is encrypted transparently — no mTLS sidecars,
+#   no code changes, no certificate management.
+#
+# WHY THIS IS COOL:
+#   - Istio/Linkerd mTLS: requires a sidecar per pod, 100MB+ RAM overhead.
+#   - Cilium WireGuard: runs in the kernel via eBPF. Zero sidecars. Zero overhead.
+#   - Encryption is node-to-node (not pod-to-pod), so it's faster and simpler.
+#
+# HOW TO ENABLE:
+#   Option A: Enable during install
+#     cilium install \
+#       --set encryption.enabled=true \
+#       --set encryption.type=wireguard \
+#       --set encryption.wireguard.userspaceFallback=false
+#
+#   Option B: Enable on existing cluster
+#     cilium config set encryption-type wireguard
+#     cilium config set enable-wireguard true
+#     # Cilium agents will restart automatically.
+#
+# HOW TO TEST:
+#   1. Check encryption status:
+#      cilium status | grep Encryption
+#      # Should show: Encryption: Wireguard
+#
+#   2. Verify WireGuard interfaces on nodes:
+#      CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+#      kubectl exec $CILIUM_POD -n kube-system -- cilium-dbg encrypt status
+#
+#   3. Try to sniff traffic (from a node):
+#      # On the node, run tcpdump on the pod network interface:
+#      tcpdump -i cilium_wg0 -n
+#      # All you'll see is encrypted WireGuard packets — no HTTP payloads!
+#
+#   4. But from inside the pod, traffic is decrypted transparently:
+#      kubectl exec <orders-pod> -n cilium-demo -- curl -s catalog-api:8080/items
+#      # ✅ Works perfectly — encryption is invisible to the application.
+#
+# PERFORMANCE IMPACT:
+#   - WireGuard adds ~1-3% CPU overhead (it's hardware-accelerated on modern CPUs)
+#   - Latency increase: ~50-100μs per packet
+#   - For comparison: Istio mTLS adds ~2-5ms per request
+# ==============================================================================
+#
+# This file is documentation-only. WireGuard is enabled via Cilium config,
+# not via a Kubernetes manifest. See the commands above.

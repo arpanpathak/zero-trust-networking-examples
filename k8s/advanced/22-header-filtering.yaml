@@ -1,0 +1,55 @@
+# ==============================================================================
+# EXERCISE 3: Header-Based L7 Filtering — "API Key Enforcement at Kernel Level"
+# ==============================================================================
+# Scenario:
+#   You want to enforce that every request to catalog-api carries a valid
+#   X-API-Key header. Requests without it are blocked by eBPF in the kernel
+#   before they even reach your Go application code.
+#
+# WHY THIS IS COOL:
+#   Your application doesn't need to implement auth middleware.
+#   Cilium's eBPF proxy parses the HTTP headers in the kernel and drops
+#   non-conforming requests. Zero application code changes needed.
+#
+# HOW TO TEST:
+#   1. Apply: kubectl apply -f k8s/advanced/22-header-filtering.yaml
+#   2. With header:    kubectl exec <orders-pod> -- curl -s -H "X-API-Key: trusted-orders-service" catalog-api:8080/items  → ✅
+#   3. Without header: kubectl exec <orders-pod> -- curl -s --connect-timeout 5 catalog-api:8080/items  → ❌ 403 by Cilium
+#   4. Wrong header:   kubectl exec <orders-pod> -- curl -s --connect-timeout 5 -H "X-API-Key: wrong" catalog-api:8080/items  → ❌ 403
+#   5. Watch drops:    hubble observe -n cilium-demo --to-label app=catalog-api --verdict DROPPED
+# ==============================================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-header-filtering
+  namespace: cilium-demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              # Allow GET /items only with the correct API key header
+              - method: GET
+                path: "/items"
+                headers:
+                  - "X-API-Key: trusted-orders-service"
+
+              # Allow GET /healthz without auth (for probes)
+              - method: GET
+                path: "/healthz"
+
+    # Kubelet + system traffic
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

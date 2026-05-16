@@ -9,9 +9,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"catalog-api/internal/models"
 	"catalog-api/internal/store"
@@ -71,6 +74,57 @@ func (h *CatalogHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":   "ok",
 		"hostname": h.hostname,
+	})
+}
+
+// HandleAdmin exposes a sensitive admin endpoint.
+// Used in Exercise 7 (path-based L7 routing) to demonstrate that
+// Cilium can block access to /admin at the kernel level while
+// allowing /items and /healthz.
+func (h *CatalogHandler) HandleAdmin(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[%s] ⚠️  GET /admin accessed from %s", h.hostname, r.RemoteAddr)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"admin":    true,
+		"hostname": h.hostname,
+		"message":  "This is a sensitive admin endpoint. Cilium should block access to this path.",
+		"items":    h.store.ListItems(),
+		"config": map[string]string{
+			"db_host": "redis-master.cilium-demo.svc.cluster.local",
+			"secret":  "hunter2",
+		},
+	})
+}
+
+// HandleTestEgress attempts to call an external service.
+// Used in Exercise 1 (egress lockdown) and Exercise 2 (FQDN egress)
+// to verify that Cilium blocks outbound calls to the internet.
+func (h *CatalogHandler) HandleTestEgress(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		url = "https://httpbin.org/ip"
+	}
+
+	log.Printf("[%s] GET /test-egress — calling %s...", h.hostname, url)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":      "blocked",
+			"target":      url,
+			"error":       err.Error(),
+			"explanation": "Cilium egress policy blocked this outbound call.",
+		})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":      "allowed",
+		"target":      url,
+		"response":    string(body),
+		"explanation": fmt.Sprintf("Egress to %s succeeded — not blocked by policy.", url),
 	})
 }
 

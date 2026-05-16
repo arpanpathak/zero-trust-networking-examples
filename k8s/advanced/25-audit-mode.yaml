@@ -1,0 +1,61 @@
+# ==============================================================================
+# EXERCISE 6: Policy Audit Mode — "Test Before You Break"
+# ==============================================================================
+# Scenario:
+#   You want to add a new restrictive policy but you're scared of breaking
+#   production. Cilium's audit mode lets you deploy a policy that LOGS
+#   what it WOULD block, without actually blocking anything.
+#
+#   Think of it as a "dry run" for network policies.
+#
+# WHY THIS IS COOL:
+#   In production, you NEVER deploy a deny policy blind. You:
+#     1. Deploy in audit mode
+#     2. Watch Hubble for would-be-dropped flows
+#     3. Fix your allow rules
+#     4. Switch to enforce mode
+#
+# HOW TO TEST:
+#   1. Apply this policy:
+#      kubectl apply -f k8s/advanced/25-audit-mode.yaml
+#
+#   2. Traffic still works (audit, not enforce):
+#      kubectl exec intruder -n cilium-demo -- curl -s catalog-api:8080/items
+#      # ✅ Still works! But Cilium logged it.
+#
+#   3. Watch audit logs in Hubble:
+#      hubble observe -n cilium-demo --verdict AUDIT
+#      # You'll see: "AUDIT: intruder → catalog-api would be DROPPED"
+#
+#   4. Once satisfied, remove the audit annotation to enforce:
+#      kubectl annotate cnp catalog-api-audit-policy \
+#        policy.cilium.io/audit-mode- -n cilium-demo
+#      # Now the intruder is actually blocked.
+# ==============================================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: catalog-api-audit-policy
+  namespace: cilium-demo
+  annotations:
+    # THIS IS THE MAGIC: audit mode means "log but don't enforce"
+    policy.cilium.io/audit-mode: "enabled"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: catalog-api
+
+  ingress:
+    # Only orders-api is allowed (same as before)
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

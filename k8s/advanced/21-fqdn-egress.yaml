@@ -1,0 +1,70 @@
+# ==============================================================================
+# EXERCISE 2: FQDN-Based Egress — "Allow Only Specific Domains"
+# ==============================================================================
+# Scenario:
+#   Your orders-api needs to call an external payment gateway (e.g., Stripe API).
+#   You want to allow ONLY api.stripe.com and block everything else.
+#
+#   Cilium resolves the FQDN at the kernel level using DNS inspection,
+#   then dynamically allows only the resolved IPs. If the attacker tries
+#   to call evil.com, it's blocked even though it's HTTPS on the same port.
+#
+# WHY THIS IS COOL:
+#   iptables can't do this. You'd need to maintain IP lists that change.
+#   Cilium watches DNS responses and auto-updates eBPF rules.
+#
+# HOW TO TEST:
+#   1. Apply: kubectl apply -f k8s/advanced/21-fqdn-egress.yaml
+#   2. Allowed:  kubectl exec <orders-pod> -- curl -s https://httpbin.org/ip     → ✅ works
+#   3. Allowed:  kubectl exec <orders-pod> -- curl -s https://ifconfig.me         → ✅ works
+#   4. Blocked:  kubectl exec <orders-pod> -- curl -s --connect-timeout 5 https://evil.com  → ❌ blocked
+#   5. Watch:    hubble observe -n cilium-demo --from-label app=orders-api --verdict DROPPED
+# ==============================================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: orders-api-fqdn-egress
+  namespace: cilium-demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: orders-api
+
+  egress:
+    # Rule 1: Allow DNS
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Rule 2: Allow internal cluster traffic
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cilium-demo
+
+    # Rule 3: Allow ONLY specific external domains
+    # Cilium intercepts DNS, resolves the domain, and programs
+    # eBPF rules for the resolved IPs. Dynamic. Automatic.
+    - toFQDNs:
+        - matchPattern: "httpbin.org"
+        - matchPattern: "ifconfig.me"
+        # Add your real domains here:
+        # - matchPattern: "api.stripe.com"
+        # - matchPattern: "*.amazonaws.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+
+    # Rule 4: System traffic
+    - toEntities:
+        - host
+        - kube-apiserver
