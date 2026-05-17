@@ -1,0 +1,33 @@
+# ==============================================================================
+# NAMESPACE ISOLATION — Sovereign Pods Can't Talk to Non-Sovereign Pods
+# ==============================================================================
+# Ingress policy: only allow traffic from within the sovereign namespace.
+# Traffic from cilium-demo, default, or any other namespace is DENIED.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sovereign-namespace-isolation
+  namespace: sovereign-seattle
+spec:
+  endpointSelector: {}
+
+  ingress:
+    # Only allow traffic from pods within the sovereign namespace
+    - fromEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": sovereign-seattle
+
+    # Allow orders-api → catalog-api on port 8080
+    - fromEndpoints:
+        - matchLabels:
+            app: orders-api
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # Kubelet probes and system traffic
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver

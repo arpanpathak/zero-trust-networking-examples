@@ -1,0 +1,164 @@
+# Sovereign Workloads — Region-Pinned Deployments
+# PRE-REQUISITE: kubectl label nodes <node> topology.kubernetes.io/region=us-sea-1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  namespace: sovereign-seattle
+  labels:
+    app: catalog-api
+    data-residency: us-west-seattle
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog-api
+  template:
+    metadata:
+      labels:
+        app: catalog-api
+        data-residency: us-west-seattle
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/region
+                    operator: In
+                    values: ["us-sea-1"]
+      containers:
+      - name: catalog-api
+        image: arpanpathak/cilium-catalog-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: sovereign-seattle
+  labels:
+    app: orders-api
+    data-residency: us-west-seattle
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+        data-residency: us-west-seattle
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/region
+                    operator: In
+                    values: ["us-sea-1"]
+      containers:
+      - name: orders-api
+        image: arpanpathak/cilium-orders-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: http
+        env:
+        - name: PORT
+          value: "8081"
+        - name: CATALOG_URL
+          value: "http://catalog-api.sovereign-seattle.svc.cluster.local:8080"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 3
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-api
+  namespace: sovereign-seattle
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  selector:
+    app: catalog-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: sovereign-seattle
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    name: http
+  selector:
+    app: orders-api
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sovereign-probe
+  namespace: sovereign-seattle
+  labels:
+    app: sovereign-probe
+    role: testing
+spec:
+  containers:
+  - name: probe
+    image: alpine/curl:latest
+    command: ["sleep", "infinity"]
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 100m
+        memory: 32Mi

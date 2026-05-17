@@ -1,0 +1,33 @@
+# ==============================================================================
+# SOVEREIGN NAMESPACE — Data Residency Zone
+# ==============================================================================
+# This namespace represents a sovereign data zone. All workloads in this
+# namespace are subject to data residency enforcement:
+#   - Pods are pinned to nodes in the approved region (Seattle / us-sea-1)
+#   - Egress to external services is blocked at the kernel level
+#   - Cross-namespace traffic is denied
+#   - All traffic is encrypted in transit via WireGuard
+#
+# The labels on this namespace are used by:
+#   - Cilium policies (to enforce network boundaries)
+#   - Admission controllers (to enforce pod scheduling)
+#   - Audit systems (to track compliance)
+# ==============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sovereign-seattle
+  labels:
+    # Data residency classification
+    data-residency: us-west-seattle
+    sovereignty-zone: us-sea-1
+
+    # Compliance frameworks this namespace adheres to
+    compliance.ccpa: "true"
+    compliance.hipaa: "true"
+
+    # Data classification level
+    data-classification: confidential
+
+    # Purpose label for Cilium policy targeting
+    purpose: sovereign-cloud-demo

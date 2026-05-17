@@ -1,0 +1,36 @@
+# ==============================================================================
+# SOVEREIGN EGRESS — Nothing Leaves the Cluster
+# ==============================================================================
+# Data sovereignty hard boundary. ALL external egress is blocked.
+# Pods can only communicate within the sovereign-seattle namespace.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sovereign-egress-lockdown
+  namespace: sovereign-seattle
+spec:
+  # Apply to ALL pods in the sovereign namespace
+  endpointSelector: {}
+
+  egress:
+    # Allow DNS resolution (kube-dns only)
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Allow traffic ONLY within the sovereign namespace
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": sovereign-seattle
+
+    # System traffic (kubelet probes, API server)
+    - toEntities:
+        - host
+        - kube-apiserver

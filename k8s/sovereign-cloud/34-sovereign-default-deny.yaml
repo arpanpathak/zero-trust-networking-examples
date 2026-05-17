@@ -1,0 +1,23 @@
+# ==============================================================================
+# SOVEREIGN DEFAULT DENY — Zero Trust Baseline
+# ==============================================================================
+# Deny all ingress and egress by default. Only traffic explicitly
+# allowed by other policies (32-*, 33-*) gets through.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sovereign-default-deny
+  namespace: sovereign-seattle
+spec:
+  endpointSelector: {}
+
+  ingress:
+    - fromEntities:
+        - host
+        - health
+        - kube-apiserver
+
+  egress:
+    - toEntities:
+        - host
+        - kube-apiserver
