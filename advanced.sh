@@ -63,7 +63,8 @@ exercise_1() {
     log "Egress lockdown applied!"
     echo ""
 
-    sleep 3
+    info "Waiting for Cilium to reprogram eBPF maps..."
+    sleep 8
 
     info "Step 3: Test egress AFTER policy (should be blocked)..."
     echo ""
@@ -73,11 +74,23 @@ exercise_1() {
         || log "External call BLOCKED! Egress lockdown working."
     echo ""
 
-    info "Step 4: Verify internal traffic still works..."
-    kubectl exec "${ORDERS_POD}" -n "${NAMESPACE}" -- \
-        curl -s --connect-timeout 5 catalog-api:8080/items \
-        && log "Internal traffic still works!" \
-        || err "Internal traffic broken — check policy"
+    info "Step 4: Verify internal traffic still works (conntrack handles responses)..."
+    # Retry a few times — conntrack may need a moment after eBPF reload.
+    PASSED=false
+    for i in 1 2 3; do
+        if kubectl exec "${ORDERS_POD}" -n "${NAMESPACE}" -- \
+            curl -s --connect-timeout 5 catalog-api:8080/items > /dev/null 2>&1; then
+            PASSED=true
+            break
+        fi
+        warn "Attempt $i failed, retrying in 3s..."
+        sleep 3
+    done
+    if [ "$PASSED" = true ]; then
+        log "Internal traffic still works! Conntrack handling responses correctly."
+    else
+        err "Internal traffic broken — run: hubble observe -n cilium-demo --from-label app=orders-api --verdict DROPPED"
+    fi
     echo ""
 
     info "Watch blocked egress in Hubble:"
@@ -238,12 +251,12 @@ reset() {
 # --------------------------------------------------------------------------
 list_exercises() {
     header "Available Exercises"
-    echo "  ${BOLD}1${NC}  Egress Lockdown      — Block all outbound internet traffic from a pod"
-    echo "  ${BOLD}2${NC}  FQDN Egress          — Allow only specific external domains (DNS-aware)"
-    echo "  ${BOLD}3${NC}  Header Filtering      — Enforce API keys at the kernel level (L7)"
-    echo "  ${BOLD}4${NC}  Bandwidth Limiting    — Throttle noisy neighbor pods with eBPF"
-    echo "  ${BOLD}5${NC}  Audit Mode            — Test policies without breaking anything"
-    echo "  ${BOLD}6${NC}  Path-Based Routing    — URL-level firewall (/items ✅, /admin ❌)"
+    echo -e "  ${BOLD}1${NC}  Egress Lockdown      — Block all outbound internet traffic from a pod"
+    echo -e "  ${BOLD}2${NC}  FQDN Egress          — Allow only specific external domains (DNS-aware)"
+    echo -e "  ${BOLD}3${NC}  Header Filtering      — Enforce API keys at the kernel level (L7)"
+    echo -e "  ${BOLD}4${NC}  Bandwidth Limiting    — Throttle noisy neighbor pods with eBPF"
+    echo -e "  ${BOLD}5${NC}  Audit Mode            — Test policies without breaking anything"
+    echo -e "  ${BOLD}6${NC}  Path-Based Routing    — URL-level firewall (/items ✅, /admin ❌)"
     echo ""
     echo "  Usage: $0 <number>        Example: $0 1"
     echo "  Reset: $0 reset           Remove all advanced policies"

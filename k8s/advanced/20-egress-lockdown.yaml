@@ -31,11 +31,14 @@ spec:
       app: catalog-api
 
   # Egress rules: control what catalog-api can SEND to.
+  # NOTE: Cilium egress policies check ALL outgoing packets, including
+  # response traffic. Even though catalog-api only "responds," Cilium
+  # needs an explicit egress rule to allow the response back.
   egress:
     # Rule 1: Allow DNS queries (essential — without this, nothing resolves)
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
+            "k8s:io.kubernetes.pod.namespace": kube-system
             k8s-app: kube-dns
       toPorts:
         - ports:
@@ -44,10 +47,11 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # Rule 2: Allow internal cluster traffic to any pod in cilium-demo namespace
+    # Rule 2: Allow traffic to pods in cilium-demo namespace ONLY.
+    # This lets catalog-api respond to orders-api, but NOT reach the internet.
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: cilium-demo
+            "k8s:io.kubernetes.pod.namespace": cilium-demo
 
     # Rule 3: Allow health/system traffic
     - toEntities:
